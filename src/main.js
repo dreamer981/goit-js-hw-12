@@ -1,3 +1,4 @@
+import axios from "axios";
 import SimpleLightbox from "simplelightbox";
 import "simplelightbox/dist/simple-lightbox.min.css";
 import iziToast from "izitoast";
@@ -12,33 +13,51 @@ const loader = document.querySelector('.loader');
 const loadMoreButton = document.querySelector('.load-more');
 
 let page = 1;
+let totalHits = 0; // Toplam sonuç sayısını takip etmek için
 
 searchButton.addEventListener('click', () => {
   const query = searchInput.value.trim();
   if (query) {
+    page = 1; // Yeni aramada sayfa sıfırlanmalı
     fetchImages(query);
   } else {
-    alert('Please enter a valid search term!');
+    iziToast.warning({
+      title: 'Warning',
+      message: 'Please enter a valid search term!',
+      position: 'topRight'
+    });
   }
 });
 
 loadMoreButton.addEventListener('click', function() {
   const query = searchInput.value.trim();
-  loadMoreImages(query);
+  if (query) {
+    page++; 
+    loadMoreImages(query);
+  }
 });
 
-// Async/Await kullanarak fetch işlemi
+// Axios kullanarak API çağrısı
 async function fetchImages(query) {
-  loader.style.display = 'block';  // Yükleme göstergesini aç
-  gallery.innerHTML = '';  // Önceki görselleri temizle
+  loader.style.display = 'block';
+  gallery.innerHTML = ''; // Önceki sonuçları temizle
+  loadMoreButton.style.display = 'none'; // Daha fazla yükle butonunu gizle
 
   try {
-    const response = await fetch(`https://pixabay.com/api/?key=${apiKey}&q=${query}&image_type=photo&per_page=15&page=${page}`);
-    const data = await response.json();
-    
-    const images = data.hits;
+    const response = await axios.get('https://pixabay.com/api/', {
+      params: {
+        key: apiKey,
+        q: query,
+        image_type: 'photo',
+        per_page: 40, 
+        page: page
+      }
+    });
 
-    if (images.length === 0) {
+    const data = response.data;
+    totalHits = data.totalHits; // Toplam sonuç sayısını al
+
+    if (data.hits.length === 0) {
       iziToast.error({
         title: 'Error',
         message: 'Sorry, there are no images matching your search query. Please try again!',
@@ -47,24 +66,13 @@ async function fetchImages(query) {
       return;
     }
 
-    let imageMarkup = '';
-    images.forEach(image => {
-      imageMarkup += `
-        <a href="${image.largeImageURL}" class="gallery-item">
-          <img src="${image.webformatURL}" alt="${image.tags}" />
-          <div class="image-info">
-            <p>Likes: ${image.likes}</p>
-            <p>Views: ${image.views}</p>
-            <p>Comments: ${image.comments}</p>
-            <p>Downloads: ${image.downloads}</p>
-          </div>
-        </a>
-      `;
-    });
+    renderImages(data.hits);
+    loader.style.display = 'none';
 
-    gallery.innerHTML = imageMarkup;  // Galeriye HTML ekle
-    updateLightbox();  // SimpleLightbox'u güncelle
-    loader.style.display = 'none';  // Yükleme göstergesini kapat
+    // Eğer toplam sonuç sayısından daha az resim varsa "Daha Fazla Yükle" butonunu göster
+    if (page * 40 < totalHits) {
+      loadMoreButton.style.display = 'block';
+    }
   } catch (error) {
     iziToast.error({
       title: 'Error',
@@ -74,53 +82,41 @@ async function fetchImages(query) {
     console.error("Error:", error);
     loader.style.display = 'none';
   }
-
-  loadMoreButton.style.display = 'block';  // Butonu görünür yap
 }
 
-// Async/Await kullanarak loadMore işlemi
+// Sayfalama için daha fazla yükle fonksiyonu
 async function loadMoreImages(query) {
-  page++;
-  loader.style.display = 'block';  // Yükleme göstergesini aç
+  loader.style.display = 'block';
 
   try {
-    const response = await fetch(`https://pixabay.com/api/?key=${apiKey}&q=${query}&image_type=photo&per_page=15&page=${page}`);
-    const data = await response.json();
-    
-    const images = data.hits;
-
-    if (images.length === 0) {
-      iziToast.error({
-        title: 'Error',
-        message: 'No more images found!',
-        position: 'topRight'
-      });
-      loader.style.display = 'none';
-      return;
-    }
-
-    let imageMarkup = '';
-    images.forEach(image => {
-      imageMarkup += `
-        <a href="${image.largeImageURL}" class="gallery-item">
-          <img src="${image.webformatURL}" alt="${image.tags}" />
-          <div class="image-info">
-            <p>Likes: ${image.likes}</p>
-            <p>Views: ${image.views}</p>
-            <p>Comments: ${image.comments}</p>
-            <p>Downloads: ${image.downloads}</p>
-          </div>
-        </a>
-      `;
+    const response = await axios.get('https://pixabay.com/api/', {
+      params: {
+        key: apiKey,
+        q: query,
+        image_type: 'photo',
+        per_page: 40, 
+        page: page
+      }
     });
 
-    gallery.innerHTML += imageMarkup;
-    updateLightbox();
+    const data = response.data;
+
+    renderImages(data.hits);
     loader.style.display = 'none';
+
+    // Eğer toplam sonuçları aştıysak "Daha Fazla Yükle" butonunu gizle
+    if (page * 40 >= totalHits) {
+      loadMoreButton.style.display = 'none';
+      iziToast.info({
+        title: 'Info',
+        message: 'You have reached the end of the results.',
+        position: 'topRight'
+      });
+    }
   } catch (error) {
     iziToast.error({
       title: 'Error',
-      message: 'An error occurred while loading images!',
+      message: 'An error occurred while loading more images!',
       position: 'topRight'
     });
     console.error("Error:", error);
@@ -128,10 +124,29 @@ async function loadMoreImages(query) {
   }
 }
 
-// SimpleLightbox'u başlat
-let lightbox = new SimpleLightbox('.gallery a');
+// Galeriye görselleri ekleme
+function renderImages(images) {
+  let imageMarkup = '';
+  images.forEach(image => {
+    imageMarkup += `
+      <a href="${image.largeImageURL}" class="gallery-item">
+        <img src="${image.webformatURL}" alt="${image.tags}" />
+        <div class="image-info">
+          <p>Likes: ${image.likes}</p>
+          <p>Views: ${image.views}</p>
+          <p>Comments: ${image.comments}</p>
+          <p>Downloads: ${image.downloads}</p>
+        </div>
+      </a>
+    `;
+  });
 
-// Galeri güncellendiğinde SimpleLightbox'u yenile
+  gallery.innerHTML += imageMarkup;
+  updateLightbox();
+}
+
+// SimpleLightbox'u güncelleyen fonksiyon
+let lightbox = new SimpleLightbox('.gallery a');
 function updateLightbox() {
   lightbox.refresh();
 }
