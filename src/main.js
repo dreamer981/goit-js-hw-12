@@ -14,6 +14,7 @@ const loadMoreButton = document.querySelector('.load-more');
 
 let page = 1;
 let totalHits = 0; // Toplam sonuç sayısını takip etmek için
+let lightbox;
 
 searchButton.addEventListener('click', () => {
   const query = searchInput.value.trim();
@@ -32,7 +33,7 @@ searchButton.addEventListener('click', () => {
 loadMoreButton.addEventListener('click', function() {
   const query = searchInput.value.trim();
   if (query) {
-    page++; 
+    page++; // Sayfa artırılmalı
     loadMoreImages(query);
   }
 });
@@ -63,6 +64,7 @@ async function fetchImages(query) {
         message: 'Sorry, there are no images matching your search query. Please try again!',
         position: 'topRight'
       });
+      loader.style.display = 'none';
       return;
     }
 
@@ -73,6 +75,10 @@ async function fetchImages(query) {
     if (page * 40 < totalHits) {
       loadMoreButton.style.display = 'block';
     }
+
+    // Lightbox'ı yeniden başlat
+    updateLightbox();
+
   } catch (error) {
     iziToast.error({
       title: 'Error',
@@ -113,6 +119,10 @@ async function loadMoreImages(query) {
         position: 'topRight'
       });
     }
+
+    // Lightbox'ı yeniden başlat
+    updateLightbox();
+
   } catch (error) {
     iziToast.error({
       title: 'Error',
@@ -124,7 +134,7 @@ async function loadMoreImages(query) {
   }
 }
 
-// Galeriye görselleri ekleme
+// Galeriye görselleri ekleyen fonksiyon
 function renderImages(images) {
   let imageMarkup = '';
   images.forEach(image => {
@@ -142,11 +152,13 @@ function renderImages(images) {
   });
 
   gallery.innerHTML += imageMarkup;
-  updateLightbox();
 }
 
 // SimpleLightbox'u güncelleyen fonksiyon
-let lightbox = new SimpleLightbox('.gallery a');
 function updateLightbox() {
-  lightbox.refresh();
+  if (lightbox) {
+    lightbox.refresh(); // Mevcut lightbox'ı yenile
+  } else {
+    lightbox = new SimpleLightbox('.gallery a'); // Yeni lightbox oluştur
+  }
 }
